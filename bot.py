@@ -196,8 +196,6 @@ async def main():
             print(f"Startup error: {e}. Retrying in {delay}s...")
             await asyncio.sleep(delay)
 
-if __name__ == "__main__":
-    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
