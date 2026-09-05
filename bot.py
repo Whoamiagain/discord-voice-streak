@@ -150,18 +150,33 @@ async def admin_error(ctx, error):
         await ctx.send("You need **Administrator** permissions to use this command.")
 
 
-# Updated Main Runner to fix Render Health Check timeouts
 async def main():
     if not TOKEN:
-        raise ValueError("DISCORD_TOKEN environment variable is not set on Render!")
+        raise ValueError("DISCORD_TOKEN environment variable is missing on Render!")
         
-    # Start web server first in non-blocking background task
+    # Start web server first so Render health check passes immediately
     asyncio.create_task(start_web_server())
     print(f"Web health check server running on port {PORT}")
     
-    # Connect bot to Discord
-    async with bot:
-        await bot.start(TOKEN)
+    # Retry loop with backoff to prevent Cloudflare Error 1015 rate limits
+    max_retries = 5
+    delay = 10
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            async with bot:
+                await bot.start(TOKEN)
+            break
+        except discord.errors.HTTPException as e:
+            if e.status == 429 or "1015" in str(e):
+                print(f"Cloudflare/Discord rate limited. Retrying in {delay} seconds (Attempt {attempt}/{max_retries})...")
+                await asyncio.sleep(delay)
+                delay *= 2  # Exponential backoff (10s, 20s, 40s...)
+            else:
+                raise e
+        except Exception as e:
+            print(f"Fatal startup error: {e}")
+            break
 
 if __name__ == "__main__":
     asyncio.run(main())
