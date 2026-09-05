@@ -76,17 +76,22 @@ async def before_keep_audio():
     await bot.wait_until_ready()
 
 
-# Web server for Render Keep-Alive / Health Check
 async def handle_ping(request):
-    return web.Response(text="Bot is active!")
+    return web.Response(text="Bot is active!", status=200)
 
 async def start_web_server():
+    """Starts a lightweight HTTP server on 0.0.0.0 using the exact port Render demands."""
     app = web.Application()
     app.router.add_get("/", handle_ping)
+    
+    # Configure runner
     runner = web.AppRunner(app)
     await runner.setup()
+    
+    # 0.0.0.0 is MANDATORY for Render to route external HTTP traffic
     site = web.TCPSite(runner, "0.0.0.0", PORT)
     await site.start()
+    print(f"Web server successfully listening on 0.0.0.0:{PORT}")
 
 
 # Bot Events
@@ -153,12 +158,11 @@ async def admin_error(ctx, error):
 async def main():
     if not TOKEN:
         raise ValueError("DISCORD_TOKEN environment variable is missing on Render!")
-        
-    # Start web server first so Render health check passes immediately
-    asyncio.create_task(start_web_server())
-    print(f"Web health check server running on port {PORT}")
-    
-    # Retry loop with backoff to prevent Cloudflare Error 1015 rate limits
+
+    # 1. Start the HTTP web server FIRST inside the running event loop
+    await start_web_server()
+
+    # 2. Start the Discord Bot loop with connection retry handling
     max_retries = 5
     delay = 10
     
@@ -169,13 +173,13 @@ async def main():
             break
         except discord.errors.HTTPException as e:
             if e.status == 429 or "1015" in str(e):
-                print(f"Cloudflare/Discord rate limited. Retrying in {delay} seconds (Attempt {attempt}/{max_retries})...")
+                print(f"Rate limited by Discord/Cloudflare. Waiting {delay}s (Attempt {attempt}/{max_retries})...")
                 await asyncio.sleep(delay)
-                delay *= 2  # Exponential backoff (10s, 20s, 40s...)
+                delay *= 2
             else:
                 raise e
         except Exception as e:
-            print(f"Fatal startup error: {e}")
+            print(f"Startup error: {e}")
             break
 
 if __name__ == "__main__":
