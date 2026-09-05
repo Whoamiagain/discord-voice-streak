@@ -157,30 +157,47 @@ async def admin_error(ctx, error):
 
 async def main():
     if not TOKEN:
-        raise ValueError("DISCORD_TOKEN environment variable is missing on Render!")
+        print("ERROR: DISCORD_TOKEN is missing!")
+        return
 
-    # 1. Start the HTTP web server FIRST inside the running event loop
+    # Start web server first so Render health checks pass
     await start_web_server()
 
-    # 2. Start the Discord Bot loop with connection retry handling
-    max_retries = 5
-    delay = 10
-    
+    delay = 15
+    max_retries = 10
+
     for attempt in range(1, max_retries + 1):
         try:
-            async with bot:
+            print(f"Connecting to Discord Gateway (Attempt {attempt}/{max_retries})...")
+            # Creating the bot context inside the loop ensures a fresh HTTP session per attempt
+            async with discord.Client(intents=intents) as client:
+                # Use bot.start directly inside its own managed session
                 await bot.start(TOKEN)
             break
+            
         except discord.errors.HTTPException as e:
             if e.status == 429 or "1015" in str(e):
-                print(f"Rate limited by Discord/Cloudflare. Waiting {delay}s (Attempt {attempt}/{max_retries})...")
+                print(f"Cloudflare/Discord IP rate limited. Waiting {delay}s before retry...")
                 await asyncio.sleep(delay)
-                delay *= 2
+                delay = min(delay * 2, 120)  # Exponential backoff capped at 2 minutes
             else:
-                raise e
-        except Exception as e:
-            print(f"Startup error: {e}")
+                print(f"HTTP Exception during login: {e}")
+                await asyncio.sleep(10)
+                
+        except discord.errors.LoginFailure:
+            print("FATAL ERROR: Invalid Discord Token! Reset your token in Developer Portal and update Render.")
             break
+            
+        except discord.errors.PrivilegedIntentsRequired:
+            print("FATAL ERROR: Enable 'Message Content Intent' in Discord Developer Portal > Bot tab!")
+            break
+            
+        except Exception as e:
+            print(f"Startup error: {e}. Retrying in {delay}s...")
+            await asyncio.sleep(delay)
+
+if __name__ == "__main__":
+    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
