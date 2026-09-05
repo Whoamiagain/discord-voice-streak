@@ -150,10 +150,17 @@ async def admin_error(ctx, error):
         await ctx.send("You need **Administrator** permissions to use this command.")
 
 
-# Main Runner
+# Updated Main Runner to fix Render Health Check timeouts
 async def main():
+    if not TOKEN:
+        raise ValueError("DISCORD_TOKEN environment variable is not set on Render!")
+        
+    # Start web server first in non-blocking background task
+    asyncio.create_task(start_web_server())
+    print(f"Web health check server running on port {PORT}")
+    
+    # Connect bot to Discord
     async with bot:
-        await start_web_server()
         await bot.start(TOKEN)
 
 if __name__ == "__main__":
