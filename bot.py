@@ -157,33 +157,33 @@ async def admin_error(ctx, error):
 
 async def main():
     if not TOKEN:
-        print("ERROR: DISCORD_TOKEN is missing!")
+        print("ERROR: DISCORD_TOKEN environment variable is missing on Render!")
         return
 
-    # Start web server first so Render health checks pass
+    # 1. Start the web server first so Render health checks pass
     await start_web_server()
 
     delay = 15
     max_retries = 10
 
+    # 2. Connection retry loop with clean session management
     for attempt in range(1, max_retries + 1):
         try:
             print(f"Connecting to Discord Gateway (Attempt {attempt}/{max_retries})...")
-            # Creating the bot context inside the loop ensures a fresh HTTP session per attempt
-            async with discord.Client(intents=intents) as client:
-                # Use bot.start directly inside its own managed session
-                await bot.start(TOKEN)
-            break
+            
+            # Authenticate and start gateway connection
+            await bot.login(TOKEN)
+            await bot.connect()
+            break  # Connection successful
             
         except discord.errors.HTTPException as e:
             if e.status == 429 or "1015" in str(e):
-                print(f"Cloudflare/Discord IP rate limited. Waiting {delay}s before retry...")
-                await asyncio.sleep(delay)
-                delay = min(delay * 2, 120)  # Exponential backoff capped at 2 minutes
+                print(f"Rate limited by Cloudflare/Discord. Waiting {delay}s before retrying...")
             else:
                 print(f"HTTP Exception during login: {e}")
-                await asyncio.sleep(10)
-                
+            await asyncio.sleep(delay)
+            delay = min(delay * 2, 120)  # Exponential backoff up to 2 mins
+            
         except discord.errors.LoginFailure:
             print("FATAL ERROR: Invalid Discord Token! Reset your token in Developer Portal and update Render.")
             break
@@ -193,9 +193,16 @@ async def main():
             break
             
         except Exception as e:
-            print(f"Startup error: {e}. Retrying in {delay}s...")
+            print(f"Connection error: {e}. Retrying in {delay}s...")
             await asyncio.sleep(delay)
+            
+        finally:
+            # Cleanly close the bot session if connection failed so no unclosed sessions linger
+            if not bot.is_closed():
+                await bot.close()
 
+if __name__ == "__main__":
+    asyncio.run(main())
 
 if __name__ == "__main__":
     asyncio.run(main())
