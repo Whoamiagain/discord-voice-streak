@@ -112,6 +112,9 @@ def create_bot():
             await ctx.send("Disconnected and cleared saved state.")
         else:
             await ctx.send("I am not in a voice channel.")
+    @bot.command(name="ping")
+    async def ping(ctx):
+        await ctx.send("Pong!")    
 
     return bot
 
@@ -129,6 +132,7 @@ async def start_web_server():
     site = web.TCPSite(runner, "0.0.0.0", PORT, reuse_port=True)
     await site.start()
     print(f"[WEB] Web server listening on 0.0.0.0:{PORT}")
+
 
 
 async def main():

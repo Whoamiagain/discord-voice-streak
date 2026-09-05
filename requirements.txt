@@ -1,4 +1,5 @@
 discord.py
+discord.py[voice]
 python-dotenv
 PyNaCl
 aiohttp
